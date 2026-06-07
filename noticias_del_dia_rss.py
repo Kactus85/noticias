@@ -37,9 +37,10 @@ import feedparser
 
 TO_EMAIL = "antonio@kactusempresa.cl"
 
-# Cuántas notas tomar como máximo por feed y por sección
-POR_FEED = 3
-POR_SECCION = 4
+# Cuántas notas tomar como máximo por feed y por sección.
+# POR_FEED bajo + rotación = más variedad de fuentes en cada sección.
+POR_FEED = 2
+POR_SECCION = 6
 
 # Palabras de categoría a EXCLUIR del firehose chileno (policial, deportes, etc.)
 EXCLUIR_CATS = [
@@ -51,34 +52,47 @@ EXCLUIR_CATS = [
 # --- Feeds de NOTICIAS por sección ---  (name, url, [opcional] palabras de categoría a INCLUIR)
 NEWS_FEEDS = {
     "política": [
+        {"name": "El Mercurio (Emol)", "url": "http://rss.emol.com/rss.asp?canal=1"},
+        {"name": "La Tercera", "url": "https://www.latercera.com/arc/outboundfeeds/rss/?outputType=xml"},
+        {"name": "Ex-Ante", "url": "https://www.ex-ante.cl/feed/"},
         {"name": "El Mostrador", "url": "https://www.elmostrador.cl/feed/"},
+        {"name": "El Dínamo", "url": "https://www.eldinamo.cl/feed/"},
+        {"name": "The Clinic", "url": "https://www.theclinic.cl/feed/"},
+        {"name": "Tele 13 Radio", "url": "https://www.t13.cl/rss/portada"},
         {"name": "BioBioChile", "url": "https://www.biobiochile.cl/static/feed-rss",
          "include": ["chile", "nacional", "política", "gobierno", "senado", "cámara"]},
     ],
     "economía": [
+        {"name": "Financial Times", "url": "https://www.ft.com/rss/home"},
+        {"name": "Bloomberg", "url": "https://feeds.bloomberg.com/markets/news.rss"},
         {"name": "BioBioChile", "url": "https://www.biobiochile.cl/static/feed-rss",
          "include": ["económic", "economía", "mercado", "dólar", "negocios", "bolsillo"]},
         {"name": "El Mostrador", "url": "https://www.elmostrador.cl/mercados/feed/"},
     ],
     "internacional": [
+        {"name": "El Mercurio (Emol)", "url": "http://rss.emol.com/rss.asp?canal=2"},
         {"name": "BBC Mundo", "url": "https://feeds.bbci.co.uk/mundo/rss.xml"},
+        {"name": "El País", "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada"},
         {"name": "The Guardian", "url": "https://www.theguardian.com/world/rss"},
+        {"name": "Semafor", "url": "https://www.semafor.com/rss.xml"},
     ],
     "tecnología": [
-        {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml"},
+        {"name": "El Mercurio (Emol)", "url": "http://rss.emol.com/rss.asp?canal=5"},
         {"name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/"},
     ],
 }
 
 # --- Feeds de ANÁLISIS & REVISTAS ---
 MAGAZINE_FEEDS = [
+    {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml", "topic": "Análisis"},
     {"name": "The Atlantic", "url": "https://www.theatlantic.com/feed/all/", "topic": "Análisis"},
-    {"name": "The Guardian — Opinión", "url": "https://www.theguardian.com/commentisfree/rss", "topic": "Opinión"},
+    {"name": "CIPER Chile", "url": "https://www.ciperchile.cl/feed/", "topic": "Reportajes"},
 ]
 
 # --- Feeds de OPINIÓN / columnistas ---
 OPINION_FEEDS = [
     {"name": "The New York Times", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Opinion.xml"},
+    {"name": "The Guardian", "url": "https://www.theguardian.com/commentisfree/rss"},
     {"name": "El Mostrador", "url": "https://www.elmostrador.cl/noticias/opinion/feed/"},
 ]
 
@@ -339,14 +353,22 @@ def generate_daily_digest():
 
     news_by_section = {}
     for section, feeds in NEWS_FEEDS.items():
-        items = []
+        # Lee cada feed por separado, luego INTERCALA (round-robin) para que
+        # cada medio aporte 1 antes de que cualquiera aporte un 2º. Así hay variedad.
+        por_feed = []
         for f in feeds:
             print(f"  📡 {section} · {f['name']}...", end=" ", flush=True)
             entradas = leer_entradas(f)
-            for e in entradas:
-                items.append({"kicker": f["name"], "time": e["time"],
-                              "title": e["title"], "body": e["summary"], "url": e["url"]})
+            por_feed.append([{"kicker": f["name"], "time": e["time"],
+                              "title": e["title"], "body": e["summary"], "url": e["url"]}
+                             for e in entradas])
             print(f"✓ ({len(entradas)})")
+        items, ronda = [], 0
+        while any(len(lst) > ronda for lst in por_feed):
+            for lst in por_feed:
+                if len(lst) > ronda:
+                    items.append(lst[ronda])
+            ronda += 1
         news_by_section[section] = items[:POR_SECCION]
 
     magazine_groups = []
