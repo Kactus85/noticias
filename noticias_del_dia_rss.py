@@ -3,19 +3,6 @@
 Noticias del Día — versión RSS (100% GRATIS)
 Lee feeds RSS públicos de cada medio (sin IA, sin costo), arma el correo
 en formato "Briefing" (Dir B) y lo envía a antonio@kactusempresa.cl.
-
-Diseñado para ser RESILIENTE: si un feed falla o viene vacío, lo salta;
-el correo igual se envía con lo que sí funcionó. Nunca links rotos.
-
-CÓMO USARLO
------------
-1. No necesitas clave de Claude. Solo el correo Gmail que envía:
-     GMAIL_USER            -> ej. tucuenta@gmail.com
-     GMAIL_APP_PASSWORD    -> contraseña de aplicación de Gmail (16 letras)
-2. Instala dependencias una vez:
-     pip install feedparser tzdata
-3. Córrelo:
-     python3 noticias_del_dia_rss.py
 """
 
 import os
@@ -37,19 +24,15 @@ import feedparser
 
 TO_EMAIL = "antonio@kactusempresa.cl"
 
-# Cuántas notas tomar como máximo por feed y por sección.
-# POR_FEED bajo + rotación = más variedad de fuentes en cada sección.
 POR_FEED = 2
 POR_SECCION = 6
 
-# Palabras de categoría a EXCLUIR del firehose chileno (policial, deportes, etc.)
 EXCLUIR_CATS = [
     "deporte", "fútbol", "futbol", "motor", "fórmula", "formula", "tenis",
     "policial", "delincuencia", "crimen", "música", "musica", "cultural",
     "tendencias", "servicios", "toma nota", "farándula", "espectáculo",
 ]
 
-# --- Feeds de NOTICIAS por sección ---  (name, url, [opcional] palabras de categoría a INCLUIR)
 NEWS_FEEDS = {
     "política": [
         {"name": "El Mercurio (Emol)", "url": "http://rss.emol.com/rss.asp?canal=1"},
@@ -82,14 +65,12 @@ NEWS_FEEDS = {
     ],
 }
 
-# --- Feeds de ANÁLISIS & REVISTAS ---
 MAGAZINE_FEEDS = [
     {"name": "The Economist", "url": "https://www.economist.com/latest/rss.xml", "topic": "Análisis"},
     {"name": "The Atlantic", "url": "https://www.theatlantic.com/feed/all/", "topic": "Análisis"},
     {"name": "CIPER Chile", "url": "https://www.ciperchile.cl/feed/", "topic": "Reportajes"},
 ]
 
-# --- Feeds de OPINIÓN / columnistas ---
 OPINION_FEEDS = [
     {"name": "The New York Times", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Opinion.xml"},
     {"name": "The Guardian", "url": "https://www.theguardian.com/commentisfree/rss"},
@@ -104,24 +85,21 @@ _feed_cache = {}
 
 
 def _get_feed(url):
-    """Descarga y parsea un feed (con caché para no repetir descargas)."""
     if url not in _feed_cache:
         try:
             _feed_cache[url] = feedparser.parse(url)
         except Exception as e:
-            print(f"  ⚠️  No se pudo leer {url}: {e}")
+            print(f"  No se pudo leer {url}: {e}")
             _feed_cache[url] = None
     return _feed_cache[url]
 
 
 def _clean(texto, n=200):
-    """Quita etiquetas HTML, decodifica entidades, colapsa espacios y recorta."""
     if not texto:
         return ""
-    t = re.sub(r"<[^>]+>", "", texto)        # quita tags
-    t = html.unescape(t)                      # &amp; -> &
-    t = re.sub(r"\s+", " ", t).strip()        # colapsa espacios
-    # corta en "Continua leyendo" / "The post" (basura típica de WordPress)
+    t = re.sub(r"<[^>]+>", "", texto)
+    t = html.unescape(t)
+    t = re.sub(r"\s+", " ", t).strip()
     for marca in ("Continua leyendo", "The post", "Leer más", "[…]", "[...]"):
         i = t.find(marca)
         if i > 40:
@@ -132,7 +110,6 @@ def _clean(texto, n=200):
 
 
 def _tiempo_relativo(entry):
-    """'Hace 2 h' a partir de la fecha de publicación."""
     st = entry.get("published_parsed") or entry.get("updated_parsed")
     if not st:
         return ""
@@ -155,10 +132,8 @@ def _categorias(entry):
 
 def _pasa_filtro(entry, include):
     cats = _categorias(entry)
-    # Excluir categorías no deseadas (deportes, policial, etc.)
     if any(any(x in c for x in EXCLUIR_CATS) for c in cats):
         return False
-    # Si se pide incluir ciertas categorías, al menos una debe calzar
     if include:
         if not any(any(inc in c for inc in include) for c in cats):
             return False
@@ -166,7 +141,6 @@ def _pasa_filtro(entry, include):
 
 
 def leer_entradas(conf, limite=POR_FEED):
-    """Devuelve una lista de entradas normalizadas de un feed."""
     feed = _get_feed(conf["url"])
     if not feed or not getattr(feed, "entries", None):
         return []
@@ -176,7 +150,6 @@ def leer_entradas(conf, limite=POR_FEED):
         if include is not None and not _pasa_filtro(e, include):
             continue
         if include is None and not _pasa_filtro(e, None):
-            # incluso sin include, filtramos deportes/policial de medios chilenos
             if conf.get("name") in ("BioBioChile", "El Mostrador"):
                 continue
         titulo = _clean(e.get("title", ""), 110)
@@ -194,7 +167,7 @@ def leer_entradas(conf, limite=POR_FEED):
     return out
 
 # ============================================================================
-# GENERADOR DEL CORREO — formato "Briefing" (Dir B), idéntico a tu versión
+# GENERADOR DEL CORREO — formato "Briefing"
 # ============================================================================
 
 SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
@@ -319,7 +292,7 @@ def send_email(to_email, subject, html_content):
         gmail_user = os.environ.get("GMAIL_USER")
         gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
         if not gmail_user or not gmail_password:
-            print("⚠️  Faltan credenciales de Gmail (GMAIL_USER / GMAIL_APP_PASSWORD).")
+            print("Faltan credenciales de Gmail (GMAIL_USER / GMAIL_APP_PASSWORD).")
             return False
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
@@ -329,14 +302,14 @@ def send_email(to_email, subject, html_content):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail_user, gmail_password)
             server.sendmail(gmail_user, to_email, msg.as_string())
-        print(f"✅ Correo enviado a {to_email}")
+        print(f"Correo enviado a {to_email}")
         return True
     except Exception as e:
-        print(f"❌ Error enviando el correo: {e}")
+        print(f"Error enviando el correo: {e}")
         return False
 
 # ============================================================================
-# CANDADO DE HORARIO (7 AM Chile en la nube) + EJECUCIÓN
+# CANDADO DE HORARIO + EJECUCIÓN
 # ============================================================================
 
 def _should_send_now():
@@ -349,20 +322,18 @@ def _should_send_now():
 
 
 def generate_daily_digest():
-    print("🔄 Generando Noticias del Día (RSS, gratis)...\n")
+    print("Generando Noticias del Día (RSS, gratis)...\n")
 
     news_by_section = {}
     for section, feeds in NEWS_FEEDS.items():
-        # Lee cada feed por separado, luego INTERCALA (round-robin) para que
-        # cada medio aporte 1 antes de que cualquiera aporte un 2º. Así hay variedad.
         por_feed = []
         for f in feeds:
-            print(f"  📡 {section} · {f['name']}...", end=" ", flush=True)
+            print(f"  {section} · {f['name']}...", end=" ", flush=True)
             entradas = leer_entradas(f)
             por_feed.append([{"kicker": f["name"], "time": e["time"],
                               "title": e["title"], "body": e["summary"], "url": e["url"]}
                              for e in entradas])
-            print(f"✓ ({len(entradas)})")
+            print(f"OK ({len(entradas)})")
         items, ronda = [], 0
         while any(len(lst) > ronda for lst in por_feed):
             for lst in por_feed:
@@ -374,33 +345,32 @@ def generate_daily_digest():
     magazine_groups = []
     print()
     for f in MAGAZINE_FEEDS:
-        print(f"  📚 {f['name']}...", end=" ", flush=True)
+        print(f"  {f['name']}...", end=" ", flush=True)
         entradas = leer_entradas(f, limite=2)
         magazine_groups.append({"name": f["name"], "topic": f.get("topic", ""), "items": entradas})
-        print(f"✓ ({len(entradas)})")
+        print(f"OK ({len(entradas)})")
 
     opinion_groups = []
     print()
     for f in OPINION_FEEDS:
-        print(f"  📝 {f['name']}...", end=" ", flush=True)
+        print(f"  {f['name']}...", end=" ", flush=True)
         entradas = leer_entradas(f, limite=2)
         opinion_groups.append({"name": f["name"], "items": entradas})
-        print(f"✓ ({len(entradas)})")
+        print(f"OK ({len(entradas)})")
 
-    print("\n🎨 Generando HTML...", end=" ", flush=True)
+    print("\nGenerando HTML...", end=" ", flush=True)
     html_content = generate_email_html(news_by_section, opinion_groups, magazine_groups)
-    print("✓")
+    print("OK")
 
     with open("noticias_del_dia.html", "w", encoding="utf-8") as fh:
         fh.write(html_content)
-    print("💾 Copia guardada en noticias_del_dia.html")
 
     total = sum(len(v) for v in news_by_section.values())
     if total == 0:
-        print("⚠️  Ningún feed entregó noticias. No se envía correo (revisa tu conexión o los feeds).")
+        print("Ningún feed entregó noticias. No se envía correo.")
         return
 
-    print("\n📤 Enviando...")
+    print("\nEnviando...")
     send_email(TO_EMAIL, f"Noticias del Día — {_fecha_es()}", html_content)
 
 
@@ -409,4 +379,4 @@ if __name__ == "__main__":
         generate_daily_digest()
     else:
         ahora = datetime.now(ZoneInfo("America/Santiago")).strftime("%H:%M")
-        print(f"⏰ Son las {ahora} en Chile, no es la hora de envío (7:00 AM). Saltando.")
+        print(f"Son las {ahora} en Chile, no es la hora de envío (7:00 AM). Saltando.")
